@@ -10,6 +10,7 @@ mod tuple_iter;
 
 extern crate proc_macro;
 use proc_macro::{Delimiter, Group, Ident, Punct, Spacing, Span, TokenStream, TokenTree, quote};
+use struct_def::StructDef;
 
 #[proc_macro_attribute]
 pub fn test_stuff(_attr: TokenStream, items: TokenStream) -> TokenStream {
@@ -179,4 +180,11 @@ fn struct_gen_new_fn_args(fl: &[TokenTree], ty: &[TokenTree]) -> TokenStream {
 pub fn show_token_stream_debug(_: TokenStream, items: TokenStream) -> TokenStream {
     println!("{:#?}", items);
     items
+}
+
+#[proc_macro_attribute]
+pub fn parse_struct(_: TokenStream, tkns: TokenStream) -> TokenStream {
+    println!("{:#?}", StructDef::analyze_stream(tkns.clone()));
+
+    tkns
 }
