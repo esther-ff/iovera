@@ -1,9 +1,9 @@
+#![allow(dead_code)]
 use proc_macro::{Group, Ident, Punct, Span, TokenStream, TokenTree};
 
 use crate::generics::Generic;
 use crate::lifetime::Lifetime;
 use crate::proc_macro;
-use crate::tuple_iter::Tuplenation;
 
 macro_rules! p_match {
     ($ex: expr) => {
@@ -172,7 +172,7 @@ impl StructDef {
                                             finished = true;
                                         }
 
-                                        TokenTree::Group(gr) => break,
+                                        TokenTree::Group(_) => break,
 
                                         _ => panic!("invalid char stream aaaaa"),
                                     }
@@ -214,18 +214,44 @@ impl StructDef {
     fn go_through_group(gr: Group, field_vec: &mut Vec<Field>) {
         let mut iter = gr.stream().into_iter().peekable();
 
-        let mut scratch: Option<Field> = None;
-
         loop {
-            match p_match!(iter.next()) {
+            let monte = iter.next();
+            dbg!(&monte);
+            match p_match!(monte) {
                 TokenTree::Ident(ident) => {
                     if p_match!(iter.next()).to_string() != ":" {
                         panic!("invalid sequence, field name and no `:` delimeter")
                     }
 
-                    let basic_type = get_ident(p_match!(iter.next()));
+                    // fixme: This should match for a ident or punct (for a `&` denoting a lifetime.)
+                    let _basic_type = get_ident(p_match!(iter.next()));
 
-                    if p_match!(iter.peek()).to_string() == 
+                    // We're inside a generic/trait bound whatever!
+                    if p_match!(iter.next()).to_string() == "<" {
+                        // arbitrary guess, less heap allocation
+                        let mut tokens = Vec::with_capacity(8);
+
+                        // read till `>`
+                        loop {
+                            let token =
+                                p_match!(iter.next(), "end of stream during parsing fields");
+
+                            if token.to_string() == ">" {
+                                break;
+                            }
+
+                            tokens.push(token);
+                        }
+
+                        // NASTY!
+                        let field_type = TokenStream::from_iter(tokens.into_iter()).to_string();
+
+                        field_vec.push(Field {
+                            field_type,
+                            field_name: ident.to_string(),
+                            lifetime: None, // <-- evil
+                        });
+                    }
                 }
 
                 _ => unreachable!(),
@@ -243,17 +269,26 @@ impl StructDef {
     }
 }
 
+// Remake those functions into a some sort Enum trait
+// this is bullshit.
+
 fn get_ident(tree: TokenTree) -> Ident {
     match tree {
         TokenTree::Ident(ident) => ident,
-        _ => panic!("invalid token type"),
+        _ => panic!("invalid token type, should be a ident"),
     }
 }
 
 fn get_punct(tree: TokenTree) -> Punct {
-    
     match tree {
         TokenTree::Punct(punct) => punct,
-        _ => panic!("invalid token type"),
+        _ => panic!("invalid token type, should be a punct"),
+    }
+}
+
+fn get_group(tree: TokenTree) -> Group {
+    match tree {
+        TokenTree::Group(gr) => gr,
+        _ => panic!("invalid token type, should be a group"),
     }
 }
