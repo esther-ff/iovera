@@ -114,7 +114,7 @@ struct OptVec<T> {
     is_ready: bool,
 }
 
-impl<T> OptVec<T> {
+impl<T: std::fmt::Debug> OptVec<T> {
     fn new(num: usize) -> Self {
         Self {
             vec: None,
@@ -124,6 +124,7 @@ impl<T> OptVec<T> {
     }
 
     fn push(&mut self, item: T) {
+        dbg!(&item);
         if self.is_ready {
             self.vec
                 .as_mut()
@@ -329,9 +330,9 @@ impl StructDef {
 
                     // fixme: This should match for a ident or punct (for a `&` denoting a lifetime.)
                     match gr_parser.eat(EOF_WHILE_PARSING_GROUP).0 {
-                        TokenTree::Ident(ident) => {
+                        TokenTree::Ident(type_name) => {
                             // Just a type name
-                            tokens.push(TokenTree::Ident(ident));
+                            tokens.push(TokenTree::Ident(type_name));
                         }
 
                         TokenTree::Punct(punct) if punct.as_char() == '&' => {
@@ -340,16 +341,25 @@ impl StructDef {
                             gr_parser.skip();
                             gr_parser.skip();
 
-                            let type_name = gr_parser
-                                .eat(EOF_WHILE_PARSING_GROUP)
-                                .ident(INVALID_TOKEN_TYPE);
+                            let type_name = {
+                                let token = gr_parser
+                                    .eat(EOF_WHILE_PARSING_GROUP)
+                                    .ident(INVALID_TOKEN_TYPE);
+
+                                if token.to_string() == "mut" {
+                                    gr_parser
+                                        .eat(EOF_WHILE_PARSING_GROUP)
+                                        .ident(INVALID_TOKEN_TYPE)
+                                } else {
+                                    // skips the `,`
+                                    // invalid for a type like `&'a mut IoPipe<'a>`
+                                    // TODO:
+                                    gr_parser.skip();
+                                    token
+                                }
+                            };
 
                             tokens.push(TokenTree::Ident(type_name));
-
-                            // skips the `,`
-                            // invalid for a type like `&'a mut IoPipe<'a>`
-                            // TODO:
-                            gr_parser.skip();
                         }
 
                         // Rest are impossible
@@ -357,11 +367,6 @@ impl StructDef {
                     }
 
                     println!("Did we get here?");
-
-                    if gr_parser.empty() {
-                        println!("WE ARE FUCKING EMPTY!");
-                        break 'vistula;
-                    }
 
                     // We're inside a generic/trait bound whatever!
                     let token = gr_parser.eat(EOF_WHILE_PARSING_TRAIT_BOUND_GROUP);
@@ -379,16 +384,16 @@ impl StructDef {
 
                             tokens.push(token.0);
                         }
+                    };
 
-                        // NASTY!
-                        let field_type = TokenStream::from_iter(tokens.into_iter()).to_string();
+                    // NASTY!
+                    let field_type = TokenStream::from_iter(tokens.into_iter()).to_string();
 
-                        field_vec.push(Field {
-                            field_type,
-                            field_name: ident.to_string(),
-                            lifetime: None, // <-- evil
-                        });
-                    }
+                    field_vec.push(Field {
+                        field_type,
+                        field_name: ident.to_string(),
+                        lifetime: None, // <-- evil
+                    });
                 }
 
                 what => {
