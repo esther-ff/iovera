@@ -3,8 +3,8 @@ use std::iter::Peekable;
 
 use proc_macro::{Group, Ident, Literal, Punct, Span, TokenStream, TokenTree};
 
-use crate::generics::Generic;
-use crate::lifetime::Lifetime;
+use crate::parser::generics::Generic;
+use crate::parser::lifetime::Lifetime;
 use crate::proc_macro;
 
 macro_rules! p_match {

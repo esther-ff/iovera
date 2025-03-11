@@ -1,6 +1,6 @@
 extern crate iovera_macros;
 
-#[iovera_macros::parse_struct]
+#[iovera_macros::show_token_stream_debug]
 pub struct TestStruct<'lf, T, I: Iterator> {
     a: i32,
     b: u32,

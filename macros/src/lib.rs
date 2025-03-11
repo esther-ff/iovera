@@ -1,12 +1,13 @@
 #![feature(proc_macro_quote)]
 #![feature(extend_one)]
 
-mod extra_iter;
-mod fn_def;
-mod generics;
-mod lifetime;
-mod struct_def;
-mod tuple_iter;
+mod iters;
+mod parser;
+mod structures;
+
+use iters::*;
+use parser::{parser::Parser, *};
+use structures::struct_def;
 
 extern crate proc_macro;
 use proc_macro::{Delimiter, Group, Ident, Punct, Spacing, Span, TokenStream, TokenTree, quote};
@@ -178,7 +179,8 @@ fn struct_gen_new_fn_args(fl: &[TokenTree], ty: &[TokenTree]) -> TokenStream {
 
 #[proc_macro_attribute]
 pub fn show_token_stream_debug(_: TokenStream, items: TokenStream) -> TokenStream {
-    println!("{:#?}", items);
+    let mut parser = Parser::new(items.clone());
+    parser.test_spit();
     items
 }
 
