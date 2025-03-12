@@ -23,23 +23,6 @@ macro_rules! p_match {
     };
 }
 
-// macro_rules! is_this {
-//     ($tkn: ident, $target: ident) => {
-//         match $tkn {
-//             TokenTree::$target(_) => true,
-
-//             _ => false,
-//         }
-//     };
-
-//     ($tkn: ident, $target: ident, $cond: expr) => {
-//         match $tkn {
-//             TokenTree::$target(p) => p.to_string() == $cond,
-//             _ => false,
-//         }
-//     };
-// }
-
 static EOF_AT_DEF_NAME: &'static str = "unexpected eof while parsing struct name";
 static EOF_AT_TRAIT_BOUND: &'static str = "unexpected eof while parsing trait bounds";
 static EOF_WHILE_PARSING_GROUP: &'static str = "unexpected eof while parsing a group of tokens";
@@ -47,66 +30,66 @@ static EOF_WHILE_PARSING_TRAIT_BOUND_GROUP: &'static str =
     "unexpected eof while parsing trait bounds in a field of a struct";
 static INVALID_TOKEN_TYPE: &'static str = "invalid token parsed";
 
-struct Parser<I: Iterator<Item = TokenTree>> {
-    iter: Peekable<I>,
-    fin: bool,
-}
+// struct Parser<I: Iterator<Item = TokenTree>> {
+//     iter: Peekable<I>,
+//     fin: bool,
+// }
 
-impl<I: Iterator<Item = TokenTree>> Parser<I> {
-    fn eat(&mut self, msg: &str) -> EnumWrap {
-        if self.fin {
-            panic!("continued itearting the parser after finish")
-        }
+// impl<I: Iterator<Item = TokenTree>> Parser<I> {
+//     fn eat(&mut self, msg: &str) -> EnumWrap {
+//         if self.fin {
+//             panic!("continued itearting the parser after finish")
+//         }
 
-        match self.iter.next() {
-            None => panic!("{}", msg),
-            Some(item) => EnumWrap(item),
-        }
-    }
+//         match self.iter.next() {
+//             None => panic!("{}", msg),
+//             Some(item) => EnumWrap(item),
+//         }
+//     }
 
-    fn empty(&mut self) -> bool {
-        self.iter.peek().is_none()
-    }
+//     fn empty(&mut self) -> bool {
+//         self.iter.peek().is_none()
+//     }
 
-    fn peek(&mut self) -> Option<&I::Item> {
-        if self.fin {
-            return None;
-        }
+//     fn peek(&mut self) -> Option<&I::Item> {
+//         if self.fin {
+//             return None;
+//         }
 
-        self.iter.peek()
-    }
+//         self.iter.peek()
+//     }
 
-    fn peek_panic(&mut self, msg: &str) -> &I::Item {
-        if self.fin {
-            panic!("continued iterating the parser after finish")
-        }
+//     fn peek_panic(&mut self, msg: &str) -> &I::Item {
+//         if self.fin {
+//             panic!("continued iterating the parser after finish")
+//         }
 
-        self.iter.peek().expect(msg)
-    }
+//         self.iter.peek().expect(msg)
+//     }
 
-    fn finished(&mut self) {
-        self.fin = true
-    }
+//     fn finished(&mut self) {
+//         self.fin = true
+//     }
 
-    fn skip(&mut self) {
-        self.iter.next();
-    }
+//     fn skip(&mut self) {
+//         self.iter.next();
+//     }
 
-    fn get_struct_name(&mut self) -> String {
-        loop {
-            if self
-                .eat(EOF_AT_DEF_NAME)
-                .ident(INVALID_TOKEN_TYPE)
-                .to_string()
-                == "struct"
-            {
-                break;
-            }
-        }
+//     fn get_struct_name(&mut self) -> String {
+//         loop {
+//             if self
+//                 .eat(EOF_AT_DEF_NAME)
+//                 .ident(INVALID_TOKEN_TYPE)
+//                 .to_string()
+//                 == "struct"
+//             {
+//                 break;
+//             }
+//         }
 
-        self.eat(EOF_AT_DEF_NAME).to_string()
-    }
-}
+//         self.eat(EOF_AT_DEF_NAME).to_string()
+//     }
+// }
 
 struct OptVec<T> {
     vec: Option<Vec<T>>,
@@ -168,6 +151,7 @@ impl Field {
 
 #[derive(Debug)]
 pub(crate) struct StructDef {
+    attrs: Vec<Ident>,
     fields: Vec<Field>,
     name: String,
     generics: Option<Vec<Generic>>,
