@@ -5,6 +5,7 @@ use proc_macro::{Group, Ident, Literal, Punct, Span, TokenStream, TokenTree};
 
 use crate::parser::generics::Generic;
 use crate::parser::lifetime::Lifetime;
+use crate::parser::ty::ParsedType;
 use crate::proc_macro;
 
 macro_rules! p_match {
@@ -130,28 +131,22 @@ impl<T: std::fmt::Debug> OptVec<T> {
 
 #[derive(Debug)]
 pub(crate) struct Field {
-    field_type: String,
+    field_type: ParsedType,
     field_name: String,
-    lifetime: Option<Lifetime>,
 }
 
 impl Field {
-    pub(crate) fn new(
-        field_type: TokenTree,
-        field_name: TokenTree,
-        lifetime: Option<Lifetime>,
-    ) -> Self {
+    pub(crate) fn new(field_type: ParsedType, field_name: String) -> Self {
         Self {
-            field_type: field_type.to_string(),
-            field_name: field_name.to_string(),
-            lifetime,
+            field_type,
+            field_name,
         }
     }
 }
 
 #[derive(Debug)]
 pub(crate) struct StructDef {
-    attrs: Vec<Ident>,
+    attrs: Option<Vec<Ident>>,
     fields: Vec<Field>,
     name: String,
     generics: Option<Vec<Generic>>,
@@ -159,237 +154,252 @@ pub(crate) struct StructDef {
 }
 
 impl StructDef {
-    pub(crate) fn analyze_stream(tokens: TokenStream) -> Self {
-        let mut parser = Parser {
-            iter: tokens.clone().into_iter().peekable(),
-            fin: false,
-        };
-
-        let name = parser.get_struct_name();
-
-        let mut fields = Vec::with_capacity(16);
-        let mut generics: OptVec<Generic> = OptVec::new(8);
-        let mut lifetimes: OptVec<Lifetime> = OptVec::new(8);
-
-        match parser.eat("eof after struct name").0 {
-            TokenTree::Group(group) => {
-                Self::go_through_group(group, &mut fields);
-                parser.finished();
-            }
-
-            TokenTree::Punct(punct) => {
-                if punct.as_char() != '<' {
-                    panic!("invalid char: {}, should be `<`", punct.as_char());
-                }
-
-                // loop to extract anything of the bounds
-                let mut finished = false;
-                loop {
-                    match parser.eat("eof during start of trait bound").0 {
-                        TokenTree::Group(gr) => {
-                            if finished {
-                                Self::go_through_group(gr, &mut fields);
-                                break;
-                            };
-
-                            panic!("end of trait bound before `>`");
-                        }
-
-                        TokenTree::Punct(punct) if Self::is_lifetime_marker(&punct) => {}
-
-                        TokenTree::Punct(punct) if punct.as_char() == '>' => {
-                            finished = true;
-                            continue;
-                        }
-
-                        TokenTree::Punct(punct) => match punct.as_char() {
-                            // lifetime marker
-                            '\'' => {
-                                let lt_name = parser
-                                    .eat("eof inside trait bound")
-                                    .ident("invalid token while parsing lifetime");
-                                if lt_name.to_string() == "mut" {
-                                    panic!("definition trait bounds do NOT have mut(s)");
-                                }
-
-                                lifetimes.push(Lifetime::new(lt_name.to_string(), punct.span()))
-                            }
-
-                            '+' => {}
-
-                            ',' => continue,
-
-                            _ => panic!("invalid char in punct at span: {:#?}", punct.span()),
-                        },
-
-                        TokenTree::Ident(ident) => {
-                            let mut generic = Generic::new(None, ident);
-
-                            let punct = parser.eat("end of stream").punct(INVALID_TOKEN_TYPE);
-
-                            match punct.as_char() {
-                                ':' => {
-                                    let poz_trait =
-                                        parser.eat(EOF_AT_TRAIT_BOUND).ident(INVALID_TOKEN_TYPE);
-
-                                    generic.insert(poz_trait);
-
-                                    let next =
-                                        p_match!(parser.peek(), "eof during peeking for chars");
-
-                                    if next.to_string() == "+" {
-                                        parser.skip();
-
-                                        loop {
-                                            let poz_trait = parser.eat(EOF_AT_TRAIT_BOUND).0;
-
-                                            match poz_trait {
-                                                TokenTree::Ident(tr) => generic.insert(tr),
-                                                TokenTree::Punct(punct)
-                                                    if punct.as_char() == ',' =>
-                                                {
-                                                    break;
-                                                }
-
-                                                TokenTree::Punct(_punct) => {
-                                                    // This is probably a lifetime related trait
-                                                    // like `<T: 'a>`
-                                                    // TODO: make it...
-                                                }
-
-                                                _ => {
-                                                    // Right now im gonna consider it unreachable to get a Group or Literal here
-                                                    panic!("group or literal obtained")
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                ',' => continue,
-
-                                ch => panic!("invalid char at generic bound: {ch}"),
-                            };
-
-                            generics.push(generic)
-                        }
-
-                        _ => panic!("found a Literal in struct definition"),
-                    }
-                }
-            }
-
-            _ => panic!("invalid token type"),
-        };
-
+    pub(crate) fn new(
+        attrs: Option<Vec<Ident>>,
+        fields: Vec<Field>,
+        name: String,
+        generics: Option<Vec<Generic>>,
+        lifetimes: Option<Vec<Lifetime>>,
+    ) -> Self {
         Self {
-            name,
+            attrs,
             fields,
-            generics: generics.into_self(),
-            lifetimes: lifetimes.into_self(),
+            name,
+            generics,
+            lifetimes,
         }
     }
+    // pub(crate) fn analyze_stream(tokens: TokenStream) -> Self {
+    //     let mut parser = Parser {
+    //         iter: tokens.clone().into_iter().peekable(),
+    //         fin: false,
+    //     };
 
-    fn go_through_group(gr: Group, field_vec: &mut Vec<Field>) {
-        let mut gr_parser = Parser {
-            iter: gr.stream().into_iter().peekable(),
-            fin: false,
-        };
+    //     let name = parser.get_struct_name();
 
-        'vistula: loop {
-            if gr_parser.empty() {
-                break 'vistula;
-            };
+    //     let mut fields = Vec::with_capacity(16);
+    //     let mut generics: OptVec<Generic> = OptVec::new(8);
+    //     let mut lifetimes: OptVec<Lifetime> = OptVec::new(8);
 
-            let monte = gr_parser.eat(EOF_WHILE_PARSING_GROUP);
-            dbg!(&monte);
-            match monte.0 {
-                TokenTree::Ident(ident) => {
-                    if gr_parser.eat(EOF_WHILE_PARSING_GROUP).to_string() != ":" {
-                        panic!("invalid sequence, field name and no `:` delimeter")
-                    }
+    //     match parser.eat("eof after struct name").0 {
+    //         TokenTree::Group(group) => {
+    //             Self::go_through_group(group, &mut fields);
+    //             parser.finished();
+    //         }
 
-                    // arbitrary guess, less heap allocation
-                    let mut tokens = Vec::with_capacity(64);
+    //         TokenTree::Punct(punct) => {
+    //             if punct.as_char() != '<' {
+    //                 panic!("invalid char: {}, should be `<`", punct.as_char());
+    //             }
 
-                    // fixme: This should match for a ident or punct (for a `&` denoting a lifetime.)
-                    match gr_parser.eat(EOF_WHILE_PARSING_GROUP).0 {
-                        TokenTree::Ident(type_name) => {
-                            // Just a type name
-                            tokens.push(TokenTree::Ident(type_name));
-                        }
+    //             // loop to extract anything of the bounds
+    //             let mut finished = false;
+    //             loop {
+    //                 match parser.eat("eof during start of trait bound").0 {
+    //                     TokenTree::Group(gr) => {
+    //                         if finished {
+    //                             Self::go_through_group(gr, &mut fields);
+    //                             break;
+    //                         };
 
-                        TokenTree::Punct(punct) if punct.as_char() == '&' => {
-                            // Lifetime marker
-                            // Right now it will just skip 2 tokens
-                            gr_parser.skip();
-                            gr_parser.skip();
+    //                         panic!("end of trait bound before `>`");
+    //                     }
 
-                            let type_name = {
-                                let token = gr_parser
-                                    .eat(EOF_WHILE_PARSING_GROUP)
-                                    .ident(INVALID_TOKEN_TYPE);
+    //                     TokenTree::Punct(punct) if Self::is_lifetime_marker(&punct) => {}
 
-                                if token.to_string() == "mut" {
-                                    gr_parser
-                                        .eat(EOF_WHILE_PARSING_GROUP)
-                                        .ident(INVALID_TOKEN_TYPE)
-                                } else {
-                                    // skips the `,`
-                                    // invalid for a type like `&'a mut IoPipe<'a>`
-                                    // TODO:
-                                    gr_parser.skip();
-                                    token
-                                }
-                            };
+    //                     TokenTree::Punct(punct) if punct.as_char() == '>' => {
+    //                         finished = true;
+    //                         continue;
+    //                     }
 
-                            tokens.push(TokenTree::Ident(type_name));
-                        }
+    //                     TokenTree::Punct(punct) => match punct.as_char() {
+    //                         // lifetime marker
+    //                         '\'' => {
+    //                             let lt_name = parser
+    //                                 .eat("eof inside trait bound")
+    //                                 .ident("invalid token while parsing lifetime");
+    //                             if lt_name.to_string() == "mut" {
+    //                                 panic!("definition trait bounds do NOT have mut(s)");
+    //                             }
 
-                        // Rest are impossible
-                        wh => panic!("{}, {wh:#?}", INVALID_TOKEN_TYPE),
-                    }
+    //                             lifetimes.push(Lifetime::new(lt_name.to_string(), punct.span()))
+    //                         }
 
-                    println!("Did we get here?");
+    //                         '+' => {}
 
-                    // We're inside a generic/trait bound whatever!
-                    let token = gr_parser.eat(EOF_WHILE_PARSING_TRAIT_BOUND_GROUP);
-                    if token.to_string() == "<" {
-                        tokens.push(token.0);
+    //                         ',' => continue,
 
-                        // read till `>`
-                        'volga: loop {
-                            let token = gr_parser.eat(EOF_WHILE_PARSING_TRAIT_BOUND_GROUP);
+    //                         _ => panic!("invalid char in punct at span: {:#?}", punct.span()),
+    //                     },
 
-                            if token.to_string() == ">" {
-                                tokens.push(token.0);
-                                break 'volga;
-                            }
+    //                     TokenTree::Ident(ident) => {
+    //                         let mut generic = Generic::new(None, ident);
 
-                            tokens.push(token.0);
-                        }
-                    };
+    //                         let punct = parser.eat("end of stream").punct(INVALID_TOKEN_TYPE);
 
-                    // NASTY!
-                    let field_type = TokenStream::from_iter(tokens.into_iter()).to_string();
+    //                         match punct.as_char() {
+    //                             ':' => {
+    //                                 let poz_trait =
+    //                                     parser.eat(EOF_AT_TRAIT_BOUND).ident(INVALID_TOKEN_TYPE);
 
-                    field_vec.push(Field {
-                        field_type,
-                        field_name: ident.to_string(),
-                        lifetime: None, // <-- evil
-                    });
-                }
+    //                                 generic.insert(poz_trait);
 
-                what => {
-                    dbg!(what);
-                }
-            }
-        }
-    }
+    //                                 let next =
+    //                                     p_match!(parser.peek(), "eof during peeking for chars");
 
-    fn is_lifetime_marker(pt: &Punct) -> bool {
-        pt.as_char() == '\''
-    }
+    //                                 if next.to_string() == "+" {
+    //                                     parser.skip();
+
+    //                                     loop {
+    //                                         let poz_trait = parser.eat(EOF_AT_TRAIT_BOUND).0;
+
+    //                                         match poz_trait {
+    //                                             TokenTree::Ident(tr) => generic.insert(tr),
+    //                                             TokenTree::Punct(punct)
+    //                                                 if punct.as_char() == ',' =>
+    //                                             {
+    //                                                 break;
+    //                                             }
+
+    //                                             TokenTree::Punct(_punct) => {
+    //                                                 // This is probably a lifetime related trait
+    //                                                 // like `<T: 'a>`
+    //                                                 // TODO: make it...
+    //                                             }
+
+    //                                             _ => {
+    //                                                 // Right now im gonna consider it unreachable to get a Group or Literal here
+    //                                                 panic!("group or literal obtained")
+    //                                             }
+    //                                         }
+    //                                     }
+    //                                 }
+    //                             }
+
+    //                             ',' => continue,
+
+    //                             ch => panic!("invalid char at generic bound: {ch}"),
+    //                         };
+
+    //                         generics.push(generic)
+    //                     }
+
+    //                     _ => panic!("found a Literal in struct definition"),
+    //                 }
+    //             }
+    //         }
+
+    //         _ => panic!("invalid token type"),
+    //     };
+
+    //     Self {
+    //         name,
+    //         fields,
+    //         generics: generics.into_self(),
+    //         lifetimes: lifetimes.into_self(),
+    //     }
+    // }
+
+    // fn go_through_group(gr: Group, field_vec: &mut Vec<Field>) {
+    //     let mut gr_parser = Parser {
+    //         iter: gr.stream().into_iter().peekable(),
+    //         fin: false,
+    //     };
+
+    //     'vistula: loop {
+    //         if gr_parser.empty() {
+    //             break 'vistula;
+    //         };
+
+    //         let monte = gr_parser.eat(EOF_WHILE_PARSING_GROUP);
+    //         dbg!(&monte);
+    //         match monte.0 {
+    //             TokenTree::Ident(ident) => {
+    //                 if gr_parser.eat(EOF_WHILE_PARSING_GROUP).to_string() != ":" {
+    //                     panic!("invalid sequence, field name and no `:` delimeter")
+    //                 }
+
+    //                 // arbitrary guess, less heap allocation
+    //                 let mut tokens = Vec::with_capacity(64);
+
+    //                 // fixme: This should match for a ident or punct (for a `&` denoting a lifetime.)
+    //                 match gr_parser.eat(EOF_WHILE_PARSING_GROUP).0 {
+    //                     TokenTree::Ident(type_name) => {
+    //                         // Just a type name
+    //                         tokens.push(TokenTree::Ident(type_name));
+    //                     }
+
+    //                     TokenTree::Punct(punct) if punct.as_char() == '&' => {
+    //                         // Lifetime marker
+    //                         // Right now it will just skip 2 tokens
+    //                         gr_parser.skip();
+    //                         gr_parser.skip();
+
+    //                         let type_name = {
+    //                             let token = gr_parser
+    //                                 .eat(EOF_WHILE_PARSING_GROUP)
+    //                                 .ident(INVALID_TOKEN_TYPE);
+
+    //                             if token.to_string() == "mut" {
+    //                                 gr_parser
+    // //                                     .eat(EOF_WHILE_PARSING_GROUP)
+    //                                     .ident(INVALID_TOKEN_TYPE)
+    //                             } else {
+    //                                 // skips the `,`
+    //                                 // invalid for a type like `&'a mut IoPipe<'a>`
+    //                                 // TODO:
+    //                                 gr_parser.skip();
+    //                                 token
+    //                             }
+    //                         };
+
+    //                         tokens.push(TokenTree::Ident(type_name));
+    //                     }
+
+    //                     // Rest are impossible
+    //                     wh => panic!("{}, {wh:#?}", INVALID_TOKEN_TYPE),
+    //                 }
+
+    //                 println!("Did we get here?");
+
+    //                 // We're inside a generic/trait bound whatever!
+    //                 let token = gr_parser.eat(EOF_WHILE_PARSING_TRAIT_BOUND_GROUP);
+    //                 if token.to_string() == "<" {
+    //                     tokens.push(token.0);
+
+    //                     // read till `>`
+    //                     'volga: loop {
+    //                         let token = gr_parser.eat(EOF_WHILE_PARSING_TRAIT_BOUND_GROUP);
+
+    //                         if token.to_string() == ">" {
+    //                             tokens.push(token.0);
+    //                             break 'volga;
+    //                         }
+
+    //                         tokens.push(token.0);
+    //                     }
+    //                 };
+
+    //                 // NASTY!
+    //                 let field_type = TokenStream::from_iter(tokens.into_iter()).to_string();
+
+    //                 field_vec.push(Field {
+    //                     field_type,
+    //                     field_name: ident.to_string(),
+    //                     lifetime: None, // <-- evil
+    //                 });
+    //             }
+
+    //             what => {
+    //                 dbg!(what);
+    //             }
+    //         }
+    //     }
+    // }
+
+    // fn is_lifetime_marker(pt: &Punct) -> bool {
+    //     pt.as_char() == '\''
+    // }
 }
 
 #[derive(Debug)]
