@@ -9,15 +9,9 @@ use crate::struct_def::Field;
 use std::marker::PhantomData;
 
 type Result<T> = std::result::Result<T, ParserError>;
-// enum Token2 {
-//     Ident(Ident),
-//     Group(Group),
-//     Punct(Punct),
-//     Literal(Literal),
-// }
 
 pub(crate) struct Stream {
-    ptr: *mut TokenTree,
+    ptr: *mut [TokenTree],
     len: usize,
     pos: usize,
 
@@ -33,7 +27,7 @@ impl Stream {
             .checked_sub(1)
             .expect("an empty token stream was given");
 
-        let ptr = Box::into_raw(token_vec.into_boxed_slice()) as *mut TokenTree;
+        let ptr = Box::into_raw(token_vec.into_boxed_slice());
 
         Self {
             ptr,
@@ -48,43 +42,61 @@ impl Stream {
     }
 
     pub fn peek(&mut self) -> Option<TokenTree> {
+        dbg!((self.len, self.pos));
         if self.end() {
             return None;
-        } else if self.pos + 1 > self.len {
-            return None;
-        }
+        };
+        // if self.pos + 1 > self.len {
+        //     return None;
+        // }
 
-        unsafe { Some(self.ptr.add(self.pos).read()) }
+        unsafe {
+            let val = (*self.ptr).get_unchecked(self.pos);
+            Some(val.clone())
+        }
     }
 
     pub fn peek_steps(&mut self, steps: usize) -> Option<TokenTree> {
         if steps == 0 {
-            return unsafe { Some(self.ptr.read()) };
+            return unsafe {
+                let val = (*self.ptr).get_unchecked(self.pos);
+
+                Some(val.clone())
+            };
         } else if self.end() {
             return None;
         } else if self.pos + steps > self.len {
             return None;
         };
 
-        unsafe { Some(self.ptr.add(self.pos + steps).read()) }
+        unsafe {
+            let val = (*self.ptr).get_unchecked(self.pos + steps);
+            Some(val.clone())
+        }
     }
 
     pub fn forward(&mut self) -> Option<TokenTree> {
+        dbg!(self.len);
+        dbg!(self.pos);
         if self.end() {
             return None;
         };
 
         unsafe {
-            let val = Some(self.ptr.add(self.pos).read());
+            let val = (*self.ptr).get_unchecked(self.pos);
             self.pos += 1;
 
-            val
+            Some(val.clone())
         }
     }
 
     pub fn forward_steps(&mut self, steps: usize) -> Option<TokenTree> {
         if steps == 0 {
-            return unsafe { Some(self.ptr.read()) };
+            return unsafe {
+                let val = (*self.ptr).get_unchecked(self.pos);
+
+                Some(val.clone())
+            };
         } else if self.end() {
             return None;
         } else if self.pos + steps > self.len {
@@ -94,13 +106,19 @@ impl Stream {
         unsafe {
             self.pos += steps;
 
-            Some(self.ptr.add(self.pos).read())
+            let val = (*self.ptr).get_unchecked(self.pos);
+
+            Some(val.clone())
         }
     }
 
     pub fn back_steps(&mut self, steps: usize) -> Option<TokenTree> {
         if steps == 0 {
-            return unsafe { Some(self.ptr.read()) };
+            return unsafe {
+                let val = (*self.ptr).get_unchecked(self.pos);
+
+                Some(val.clone())
+            };
         } else if self.pos == 0 || self.pos == steps - 1 {
             return None;
         };
@@ -108,7 +126,9 @@ impl Stream {
         unsafe {
             self.pos -= steps;
 
-            Some(self.ptr.add(self.pos).read())
+            let val = (*self.ptr).get_unchecked(self.pos);
+
+            Some(val.clone())
         }
     }
 
@@ -119,7 +139,11 @@ impl Stream {
             self.pos -= 1;
         }
 
-        unsafe { Some(self.ptr.add(self.pos).read()) }
+        unsafe {
+            let val = (*self.ptr).get_unchecked(self.pos);
+
+            Some(val.clone())
+        }
     }
 }
 
@@ -445,7 +469,9 @@ fn dig_up_generics_lifetimes(parser: &mut Parser) -> Result<(Vec<Generic>, Vec<L
     let mut lifetimes: Vec<Lifetime> = Vec::with_capacity(4);
 
     loop {
+        dbg!(parser.peek());
         let tkn = parser.eof_next()?;
+
         dbg!(&tkn);
         match tkn {
             // checking for the `'` character
@@ -488,9 +514,9 @@ fn dig_up_generics_lifetimes(parser: &mut Parser) -> Result<(Vec<Generic>, Vec<L
 
                     loop {
                         let tkn = parser.eof_next()?;
-                        println!("Are we here?");
+                        //println!("Are we here?");
                         let ident = distinguish!(Ident, tkn);
-                        dbg!(&ident);
+                        //dbg!(&ident);
                         trait_bounds.push(ident);
 
                         let next_token = match parser.peek() {
@@ -530,8 +556,6 @@ fn dig_up_generics_lifetimes(parser: &mut Parser) -> Result<(Vec<Generic>, Vec<L
                 } else {
                     generics.push(Generic::new(None, id))
                 }
-
-                dbg!(&generics);
             }
 
             TokenTree::Punct(pc) if pc.as_char() == ',' => {}
