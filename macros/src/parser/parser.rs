@@ -472,11 +472,11 @@ fn dig_up_generics_lifetimes(parser: &mut Parser) -> Result<(Vec<Generic>, Vec<L
         match parser.peek() {
             None => return parse_error!(Eof, parser),
             Some(tkn) => match tkn {
-                &TokenTree::Group(_) => break;
-                _ => {},
-            }
+                TokenTree::Group(_) => break,
+                _ => {}
+            },
         }
-        
+
         let tkn = parser.eof_next()?;
 
         match tkn {
