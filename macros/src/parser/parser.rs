@@ -226,14 +226,14 @@ macro_rules! eof_match {
     }};
 }
 
-struct OptVec<T> {
+pub(crate) struct OptVec<T> {
     vec: Option<Vec<T>>,
     num: usize,
     is_ready: bool,
 }
 
 impl<T: std::fmt::Debug> OptVec<T> {
-    fn new(num: usize) -> Self {
+    pub(crate) fn new(num: usize) -> Self {
         Self {
             vec: None,
             num,
@@ -241,7 +241,7 @@ impl<T: std::fmt::Debug> OptVec<T> {
         }
     }
 
-    fn push(&mut self, item: T) {
+    pub(crate) fn push(&mut self, item: T) {
         dbg!(&item);
         if self.is_ready {
             self.vec
@@ -258,7 +258,7 @@ impl<T: std::fmt::Debug> OptVec<T> {
         self.vec = Some(container);
     }
 
-    fn into_self(mut self) -> Option<Vec<T>> {
+    pub(crate) fn into_self(mut self) -> Option<Vec<T>> {
         self.vec.take()
     }
 }
@@ -649,7 +649,6 @@ fn dig_up_generics_lifetimes(
             }
         }
     }
-    println!("Meoww");
     Ok((generics.into_self(), lifetimes.into_self()))
 }
 

@@ -7,6 +7,7 @@ mod structures;
 
 use iters::*;
 use parser::{parser::Parser, *};
+use structures::impl_block;
 use structures::struct_def;
 
 extern crate proc_macro;

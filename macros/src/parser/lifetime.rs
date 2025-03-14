@@ -11,19 +11,10 @@ impl Lifetime {
         Self { name, apostrophe }
     }
 
-    pub(crate) fn to_tkn_stream(&self) -> TokenStream {
-        let mut tkns = TokenStream::new();
-
-        let mut vec = Vec::with_capacity(3);
-
+    pub(crate) fn into_tokens(&self) -> impl Iterator<Item = TokenTree> {
         let mark = Punct::new('\'', proc_macro::Spacing::Joint);
-        vec.push(TokenTree::Punct(mark));
+        let name = Ident::new(&self.name, Span::mixed_site());
 
-        let name = Ident::new(&self.name, Span::call_site());
-        vec.push(TokenTree::Ident(name));
-
-        tkns.extend(vec.into_iter());
-
-        tkns
+        [TokenTree::Punct(mark), TokenTree::Ident(name)].into_iter()
     }
 }

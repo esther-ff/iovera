@@ -1,8 +1,8 @@
 use proc_macro::{Ident, Punct, Span};
 
 use crate::TokenStream;
-use crate::proc_macro::TokenTree;
 use crate::extra_iter::Extra;
+use crate::proc_macro::TokenTree;
 
 #[derive(Debug)]
 struct Arg {
@@ -37,17 +37,16 @@ impl Arg {
 
         iter
     }
-
 }
 
 #[derive(Debug)]
-pub(crate) struct FnBuilder {
+pub(crate) struct FnDef {
     args: Vec<Arg>,
     name: Option<String>,
     ret_type: Option<String>,
 }
 
-impl FnBuilder {
+impl FnDef {
     pub(crate) fn new() -> Self {
         Self {
             args: Vec::new(),
@@ -70,7 +69,7 @@ impl FnBuilder {
         self.ret_type = Some(ret_type.to_string());
         self
     }
-    
+
     pub(crate) fn build(self) -> TokenStream {
         let mut stream = TokenStream::new();
         let args = Arg::complete_args(self.args.into_iter());
