@@ -42,7 +42,6 @@ impl Stream {
     }
 
     pub fn peek(&mut self) -> Option<TokenTree> {
-        dbg!((self.len, self.pos));
         if self.end() {
             return None;
         };
@@ -76,8 +75,6 @@ impl Stream {
     }
 
     pub fn forward(&mut self) -> Option<TokenTree> {
-        dbg!(self.len);
-        dbg!(self.pos);
         if self.end() {
             return None;
         };
@@ -153,6 +150,7 @@ impl std::ops::Drop for Stream {
     }
 }
 
+#[derive(Debug)]
 pub enum ParserError {
     Eof(&'static str, Span),
     WrongToken(String, Span),
@@ -219,6 +217,52 @@ macro_rules! distinguish {
     }};
 }
 
+macro_rules! eof_match {
+    ($match:expr, $parser:ident) => {{
+        match $match {
+            None => return parse_error!(Eof, $parser),
+            Some(val) => val,
+        }
+    }};
+}
+
+struct OptVec<T> {
+    vec: Option<Vec<T>>,
+    num: usize,
+    is_ready: bool,
+}
+
+impl<T: std::fmt::Debug> OptVec<T> {
+    fn new(num: usize) -> Self {
+        Self {
+            vec: None,
+            num,
+            is_ready: false,
+        }
+    }
+
+    fn push(&mut self, item: T) {
+        dbg!(&item);
+        if self.is_ready {
+            self.vec
+                .as_mut()
+                .expect("this vec should be here")
+                .push(item);
+
+            return;
+        }
+
+        let mut container = Vec::with_capacity(self.num);
+        container.push(item);
+
+        self.vec = Some(container);
+    }
+
+    fn into_self(mut self) -> Option<Vec<T>> {
+        self.vec.take()
+    }
+}
+
 pub struct Parser {
     tkns: Stream,
     last_span: Option<Span>,
@@ -272,20 +316,19 @@ impl Parser {
     }
 
     pub fn ident(&mut self) -> Result<Ident> {
-        let aaa = dbg!(self.eof_next()?);
-        let err = match aaa {
+        let err = match self.eof_next()? {
             TokenTree::Ident(ident) => return Ok(ident),
 
             TokenTree::Group(gr) => {
-                parse_error!(WrongToken, gr.span(), "Ident", "Group")
+                parse_error!(WrongToken, gr.span(), "Ident", gr.to_string())
             }
 
             TokenTree::Punct(pt) => {
-                parse_error!(WrongToken, pt.span(), "Ident", "Punct")
+                parse_error!(WrongToken, pt.span(), "Ident", pt.as_char())
             }
 
             TokenTree::Literal(lt) => {
-                parse_error!(WrongToken, lt.span(), "Ident", "Literal")
+                parse_error!(WrongToken, lt.span(), "Ident", lt.to_string())
             }
         };
 
@@ -297,15 +340,15 @@ impl Parser {
             TokenTree::Punct(pc) => return Ok(pc),
 
             TokenTree::Group(gr) => {
-                parse_error!(WrongToken, gr.span(), "Punct", "Group")
+                parse_error!(WrongToken, gr.span(), "Punct", gr.to_string())
             }
 
             TokenTree::Ident(id) => {
-                parse_error!(WrongToken, id.span(), "Punct", "Group")
+                parse_error!(WrongToken, id.span(), "Punct", id.to_string())
             }
 
             TokenTree::Literal(lt) => {
-                parse_error!(WrongToken, lt.span(), "Punct", "Literal")
+                parse_error!(WrongToken, lt.span(), "Punct", lt.to_string())
             }
         };
 
@@ -350,69 +393,102 @@ impl Parser {
 
         use TokenTree::*;
         'vabank: loop {
-            dbg!(&struct_fields);
             match self.eof_next()? {
                 Group(gr) => {
-                    //
                     let mut parser = Parser::new(gr.stream());
 
                     loop {
+                        if parser.tkns.end() {
+                            break;
+                        }
+
                         let field_name = parser.ident()?;
 
                         match parser.punct()?.as_char() {
-                            ':' => {}
+                            ':' => {
+                                if parser.peek().is_none() {
+                                    return parse_error!(Eof, parser);
+                                }
+                            }
                             ch => {
                                 return parse_error!(WrongToken, self.get_last_span(), ":", ch);
                             }
                         }
 
-                        let mut tokens = Vec::with_capacity(64);
-
-                        if parser.tkns.end() {
-                            break;
-                        }
-
                         match parser.next().expect("this should not be `None`") {
-                            Ident(id) => {
+                            Ident(type_name) => {
                                 // Just the type name
-                                tokens.push(TokenTree::Ident(id));
+                                let field = match parser.punct()?.as_char() {
+                                    ',' => {
+                                        let field_type =
+                                            ParsedType::new(None, type_name, None, None);
+                                        Field::new(field_type, field_name.to_string())
+                                    }
+
+                                    '<' => {
+                                        let (gens, lfs) = dig_up_generics_lifetimes(&mut parser)?;
+
+                                        let field_type =
+                                            ParsedType::new(None, type_name, gens, lfs);
+
+                                        // After the `dig_up_generics_lifetimes` function is called
+                                        // the cursor will be on the character after `>`
+                                        // It should be `,` so we can just skip it
+                                        dbg!(parser.next());
+
+                                        Field::new(field_type, field_name.to_string())
+                                    }
+
+                                    ch => {
+                                        return parse_error!(
+                                            WrongToken,
+                                            parser.get_last_span(),
+                                            "`<` or `,`",
+                                            ch
+                                        );
+                                    }
+                                };
+
+                                struct_fields.push(field)
                             }
 
                             Punct(pt) if pt.as_char() == '&' => {
-                                let lifetime_name = match parser.next_st(2) {
-                                    None => return parse_error!(Eof, self),
+                                // `next_st` faulty
+                                // also additional check for correctness
+                                parser.skip();
+                                let lifetime_name = match parser.next() {
+                                    None => return parse_error!(Eof, parser),
 
-                                    Some(name) => distinguish!(Ident, name),
+                                    Some(name) => {
+                                        let tkn = distinguish!(Ident, name);
+
+                                        Some(tkn)
+                                    }
                                 };
 
-                                let is_mutable = match parser.peek() {
-                                    None => return parse_error!(Eof, self),
-
-                                    Some(tkn) => tkn.to_string() == "mut",
-                                };
-
+                                let is_mutable =
+                                    eof_match!(parser.peek(), parser).to_string() == "mut";
                                 let type_name = if is_mutable {
-                                    match parser.next_st(2) {
-                                        None => return parse_error!(Eof, self),
-
-                                        Some(token) => match token {
-                                            Ident(name) => name,
-                                            _ => {
-                                                return parse_error!(
-                                                    WrongToken,
-                                                    self.get_last_span(),
-                                                    "Ident",
-                                                    "nothing good"
-                                                );
-                                            }
-                                        },
+                                    // `next_st` might be faulty
+                                    // test it out!
+                                    parser.skip();
+                                    match eof_match!(parser.next(), parser) {
+                                        Ident(name) => dbg!(name),
+                                        any => {
+                                            return parse_error!(
+                                                WrongToken,
+                                                self.get_last_span(),
+                                                "Ident",
+                                                any
+                                            );
+                                        }
                                     }
                                 } else {
-                                    parser.ident()?
+                                    dbg!(parser.ident())?
                                 };
 
                                 let field = create_field(
-                                    self,
+                                    &mut parser,
                                     is_mutable,
                                     lifetime_name,
                                     type_name,
@@ -433,6 +509,8 @@ impl Parser {
                         };
                     }
 
+                    // Ends the entire loop
+                    // We already parsed the struct's group
                     break 'vabank;
                 }
 
@@ -441,8 +519,8 @@ impl Parser {
                 Punct(pc) if pc.as_char() == '<' => {
                     let (gens, lfs) = dig_up_generics_lifetimes(self)?;
 
-                    struct_generics = Some(gens);
-                    struct_lifetimes = Some(lfs);
+                    struct_generics = gens;
+                    struct_lifetimes = lfs;
                 }
                 das => {
                     return parse_error!(WrongToken, self.get_last_span(), "a `<` or a Group", das);
@@ -464,9 +542,11 @@ impl Parser {
 // --- HELPER FUNCTIONS --- //
 
 // Requires that the current parser's position be 1 after the detected `<`
-fn dig_up_generics_lifetimes(parser: &mut Parser) -> Result<(Vec<Generic>, Vec<Lifetime>)> {
-    let mut generics: Vec<Generic> = Vec::with_capacity(4);
-    let mut lifetimes: Vec<Lifetime> = Vec::with_capacity(4);
+fn dig_up_generics_lifetimes(
+    parser: &mut Parser,
+) -> Result<(Option<Vec<Generic>>, Option<Vec<Lifetime>>)> {
+    let mut generics: OptVec<Generic> = OptVec::new(4);
+    let mut lifetimes: OptVec<Lifetime> = OptVec::new(4);
 
     loop {
         match parser.peek() {
@@ -520,9 +600,7 @@ fn dig_up_generics_lifetimes(parser: &mut Parser) -> Result<(Vec<Generic>, Vec<L
 
                     loop {
                         let tkn = parser.eof_next()?;
-                        //println!("Are we here?");
                         let ident = distinguish!(Ident, tkn);
-                        //dbg!(&ident);
                         trait_bounds.push(ident);
 
                         let next_token = match parser.peek() {
@@ -571,15 +649,15 @@ fn dig_up_generics_lifetimes(parser: &mut Parser) -> Result<(Vec<Generic>, Vec<L
             }
         }
     }
-
-    Ok((generics, lifetimes))
+    println!("Meoww");
+    Ok((generics.into_self(), lifetimes.into_self()))
 }
 
 // Creates a field from a borrowed parser and variables
 fn create_field(
     parser: &mut Parser,
     is_mutable: bool,
-    lf_name: Ident,
+    lf_name: Option<Ident>,
     type_name: Ident,
     field_name: Ident,
 ) -> Result<Field> {
@@ -594,17 +672,22 @@ fn create_field(
         }
     };
 
-    let borrow = Borrow::new(is_mutable, lf_name.to_string());
-    let ty: ParsedType;
+    let borrow = match lf_name {
+        None => None,
+        Some(name) => {
+            let borrow = Borrow::new(is_mutable, name.to_string());
+            Some(borrow)
+        }
+    };
 
-    if has_extra_markers {
+    let ty = if has_extra_markers {
         // We'll check for additional lifetimes, marks on the type itself
         // like `Test<'a, T>`
         let (gens, lfs) = dig_up_generics_lifetimes(parser)?;
-        ty = ParsedType::new(Some(borrow), type_name, Some(gens), Some(lfs));
+        ParsedType::new(borrow, type_name, gens, lfs)
     } else {
-        ty = ParsedType::new(Some(borrow), type_name, None, None);
-    }
+        ParsedType::new(borrow, type_name, None, None)
+    };
 
     Ok(Field::new(ty, field_name.to_string()))
 }
