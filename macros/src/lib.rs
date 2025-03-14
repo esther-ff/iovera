@@ -7,11 +7,10 @@ mod structures;
 
 use iters::*;
 use parser::{parser::Parser, *};
-use structures::impl_block;
 use structures::struct_def;
 
 extern crate proc_macro;
-use proc_macro::{Delimiter, Group, Ident, Punct, Spacing, Span, TokenStream, TokenTree, quote};
+use proc_macro::{Delimiter, Group, Ident, Punct, Spacing, Span, TokenStream, TokenTree};
 use struct_def::StructDef;
 
 fn self_struct_def_gen(fields: &[TokenTree]) -> TokenStream {

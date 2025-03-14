@@ -71,7 +71,7 @@ impl FnDef {
     }
 
     pub(crate) fn build(self) -> TokenStream {
-        let mut stream = TokenStream::new();
+        let stream = TokenStream::new();
         let args = Arg::complete_args(self.args.into_iter());
 
         stream

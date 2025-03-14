@@ -1,4 +1,4 @@
-use proc_macro::{Ident, Punct, Span, TokenStream, TokenTree};
+use proc_macro::{Ident, Punct, Span, TokenTree};
 
 #[derive(Debug)]
 pub(crate) struct Lifetime {

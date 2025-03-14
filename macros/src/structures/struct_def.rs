@@ -1,7 +1,6 @@
 #![allow(dead_code)]
-use std::iter::Peekable;
 
-use proc_macro::{Group, Ident, Literal, Punct, Span, TokenStream, TokenTree};
+use proc_macro::{Group, Ident, Literal, Punct, TokenTree};
 
 use crate::parser::generics::Generic;
 use crate::parser::lifetime::Lifetime;

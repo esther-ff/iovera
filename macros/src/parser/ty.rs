@@ -1,4 +1,4 @@
-use proc_macro::{Ident, Span};
+use proc_macro::Ident;
 
 use super::{generics::Generic, lifetime::Lifetime};
 
