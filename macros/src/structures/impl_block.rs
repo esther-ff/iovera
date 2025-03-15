@@ -1,4 +1,4 @@
-use proc_macro::{Ident, Punct, Span, TokenTree};
+use proc_macro::{Group, Ident, Punct, Span, TokenStream, TokenTree};
 
 use crate::lifetime::Lifetime;
 
@@ -132,11 +132,13 @@ struct Properties {
     bounds: Option<Vec<TraitBound>>,
 }
 
+/// Builder of a `ImplBlock`
 pub struct ImplBlockBuilder {
     fn_defs: OptVec<FnDef>,
     name: Option<Ident>,
     lside_props: OptVec<TraitBound>,
     is_unsafe: bool,
+    impls_trait: (), // Replace with actual trait type?!!!
 }
 
 impl ImplBlockBuilder {
@@ -158,6 +160,76 @@ impl ImplBlockBuilder {
     pub fn is_unsafe(&mut self, safety: bool) -> &mut Self {
         self.is_unsafe = safety;
         self
+    }
+
+    // todo: replace option with proper error
+    pub fn build(mut self) -> Option<TokenStream> {
+        // We can't make an impl block with no name right?
+        if self.name.is_none() {
+            return None;
+        }
+
+        let mut tkns = Vec::with_capacity(self.block_size_hint());
+
+        // takes care of marking an unsafe impl
+        // ex: `unsafe impl Sync for Test {}`
+        //      ^^^^^^
+        if self.is_unsafe {
+            let unsafe_ident = Ident::new("unsafe", Span::mixed_site());
+            tkns.push(TokenTree::Ident(unsafe_ident))
+        }
+
+        // impl ident
+        let impl_ident = Ident::new("impl", Span::mixed_site());
+        tkns.push(TokenTree::Ident(impl_ident));
+
+        // TODO:
+        // trait bounds here :3
+
+        // TODO:
+        // somehow handle syntax like
+        // impl Trait for MyStruct
+        //      ^^^^^^^^^
+        // focus on the ^
+
+        let name = TokenTree::Ident(self.name.take().unwrap());
+        tkns.push(name);
+
+        // Function definition handling
+        let mut group_tkns: Vec<TokenTree> = Vec::with_capacity(self.block_size_hint());
+        match self.fn_defs.get_inside() {
+            None => {}
+            Some(func_defs) => {
+                for def in func_defs {
+                    // TODO: `FnDef` should return an iterator?
+                    group_tkns.extend(def.to_tokens());
+                }
+            }
+        }
+        // This is bad
+        // make it better
+        let group = TokenTree::Group(Group::new(
+            proc_macro::Delimiter::Parenthesis,
+            group_tkns.into_iter().collect(),
+        ));
+
+        tkns.push(group);
+
+        Some(tkns.into_iter().collect())
+    }
+
+    fn block_size_hint(&self) -> usize {
+        let mut base = 1;
+        if self.is_unsafe {
+            base += 1;
+        };
+
+        // assumption: a `FnDef` will be ~3 `TokenTree`s
+        base += self.fn_defs.do_something(0, |vec| vec.len() * 3);
+        // assumption: a `TraitBound` will be ~5 `TokenTree`s
+        base += self.lside_props.do_something(0, |vec| vec.len() * 5);
+
+        base
     }
 }
 
@@ -181,21 +253,30 @@ pub struct ImplBlock {
 }
 
 impl ImplBlock {
+    /// Creates a new `ImplBlockBuilder`
     pub fn new() -> ImplBlockBuilder {
         ImplBlockBuilder {
             fn_defs: OptVec::new(0),
             name: None,
             lside_props: OptVec::new(0),
             is_unsafe: false,
+            impls_trait: (),
         }
     }
 
+    /// Creates a new `ImplBlockBuilder` but pre-allocates space due to the internal representation
+    /// using `Vec`
+    ///
+    /// Will be more performant due to lesser heap allocations
+    /// due to internally using `Vec::with_capacity`, the allocated size is not exact
+    /// however here it shouldn't make any specific impact.
     pub fn new_with_capacity(cap: usize) -> ImplBlockBuilder {
         ImplBlockBuilder {
             fn_defs: OptVec::new(cap),
             name: None,
             lside_props: OptVec::new(cap),
             is_unsafe: false,
+            impls_trait: (),
         }
     }
 }

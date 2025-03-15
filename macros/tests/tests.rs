@@ -13,7 +13,6 @@ pub struct TestStruct<'lf, T, I: Iterator> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn it_works() {

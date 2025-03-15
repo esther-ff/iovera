@@ -261,6 +261,20 @@ impl<T: std::fmt::Debug> OptVec<T> {
     pub(crate) fn into_self(mut self) -> Option<Vec<T>> {
         self.vec.take()
     }
+
+    pub(crate) fn do_something<F, Type>(&self, default: Type, function: F) -> Type
+    where
+        F: FnOnce(&Vec<T>) -> Type,
+    {
+        match self.vec {
+            Some(ref vec) => function(vec),
+            None => default,
+        }
+    }
+
+    pub(crate) fn get_inside(&mut self) -> Option<Vec<T>> {
+        self.vec.take()
+    }
 }
 
 pub struct Parser {

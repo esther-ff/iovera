@@ -4,6 +4,10 @@ use crate::TokenStream;
 use crate::extra_iter::Extra;
 use crate::proc_macro::TokenTree;
 
+/*
+    Remake everything!
+*/
+
 #[derive(Debug)]
 struct Arg {
     name: String,
@@ -29,17 +33,12 @@ impl Arg {
         args.for_each(|arg| arg.make_to_iter().for_each(|item| tokens.push(item)));
 
         let iter = Extra::new(tokens.into_iter(), 4, gen_ident);
-        //
-        //let tokens = match iter.size_hint() {
-        //    (0, None) => Vec::with_capacity(32),
-        //    (0, Some(num)) => Vec::with_capacity(num)
-        //};
-
         iter
     }
 }
 
 #[derive(Debug)]
+/// Represents a function definition
 pub(crate) struct FnDef {
     args: Vec<Arg>,
     name: Option<String>,
@@ -70,7 +69,7 @@ impl FnDef {
         self
     }
 
-    pub(crate) fn build(self) -> TokenStream {
+    pub(crate) fn to_tokens(self) -> TokenStream {
         let stream = TokenStream::new();
         let args = Arg::complete_args(self.args.into_iter());
 
