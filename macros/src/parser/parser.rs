@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use proc_macro::{Group, Ident, Literal, Punct, Span, TokenStream, TokenTree};
 
 use super::generics::Generic;
@@ -272,6 +273,16 @@ impl<T: std::fmt::Debug> OptVec<T> {
         }
     }
 
+    pub(crate) fn do_take<F, Type>(&mut self, default: Type, function: F) -> Type
+    where
+        F: FnOnce(Vec<T>) -> Type,
+    {
+        match self.vec.take() {
+            None => default,
+            Some(vec) => function(vec),
+        }
+    }
+
     pub(crate) fn get_inside(&mut self) -> Option<Vec<T>> {
         self.vec.take()
     }
@@ -283,6 +294,7 @@ pub struct Parser {
 }
 
 impl Parser {
+    /// Creates a new `Parser`.
     pub fn new(stream: TokenStream) -> Self {
         Self {
             tkns: Stream::new(stream),
@@ -290,14 +302,23 @@ impl Parser {
         }
     }
 
+    /// Skips one element
+    /// equivalent to calling a `Parser`'s `next` method and
+    /// discarding the result.
     pub fn skip(&mut self) {
         self.next();
     }
 
+    /// Peeks one element forward.
+    /// returns `None` if there are no more elements
+    /// otherwise returns `Some` containing a `TokenTree`
     pub fn peek(&mut self) -> Option<TokenTree> {
         self.tkns.peek()
     }
 
+    /// Moves one element forward
+    /// returns `None` if there are no more elements
+    /// otherwise returns `Some` containing a `TokenTree`
     pub fn next(&mut self) -> Option<TokenTree> {
         let token = self.tkns.forward();
         self.last_span = Some(
@@ -309,6 +330,9 @@ impl Parser {
         token
     }
 
+    /// Moves one element forward
+    /// instead of giving us an `Option`
+    /// it returns a `Result<TokenTree, ParseError>`
     pub fn eof_next(&mut self) -> Result<TokenTree> {
         match self.tkns.forward() {
             None => return parse_error!(Eof, self),
@@ -317,18 +341,22 @@ impl Parser {
         }
     }
 
+    /// Goes back one token.
     pub fn back(&mut self) -> Option<TokenTree> {
         self.tkns.back()
     }
 
+    /// Goes forward `steps` tokens
     pub fn next_st(&mut self, steps: usize) -> Option<TokenTree> {
         self.tkns.forward_steps(steps)
     }
 
+    /// Goes back `steps` tokens
     pub fn back_st(&mut self, steps: usize) -> Option<TokenTree> {
         self.tkns.back_steps(steps)
     }
 
+    /// Asserts the result is an `Ident`, else returns `Err`
     pub fn ident(&mut self) -> Result<Ident> {
         let err = match self.eof_next()? {
             TokenTree::Ident(ident) => return Ok(ident),
@@ -349,6 +377,7 @@ impl Parser {
         err
     }
 
+    /// Asserts the result is a `Punct`, else returns `Err`
     pub fn punct(&mut self) -> Result<Punct> {
         let err = match self.eof_next()? {
             TokenTree::Punct(pc) => return Ok(pc),
@@ -369,24 +398,14 @@ impl Parser {
         err
     }
 
+    /// Last span of item obtained.
     fn get_last_span(&self) -> Span {
         self.last_span.map_or_else(Span::call_site, |span| span)
     }
 
-    pub fn test_spit(&mut self) {
-        loop {
-            let tkn = self.tkns.forward();
-
-            if tkn.is_none() {
-                break;
-            } else {
-                dbg!(tkn.unwrap());
-            }
-        }
-    }
-
+    /// Parses a struct.
+    /// Returns an error once one occurs.
     pub fn parse_struct(&mut self) -> Result<StructDef> {
-        // Get the struct's name and attributes
         let mut struct_attrs: Vec<proc_macro::Ident> = Vec::with_capacity(3);
 
         loop {

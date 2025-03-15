@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 use proc_macro::{Group, Ident, Punct, Span, TokenStream, TokenTree};
 
 use crate::lifetime::Lifetime;
@@ -8,7 +9,7 @@ use crate::parser::parser::OptVec;
 /// Represents a trait bound
 /// like `<T: Iterator>`
 #[derive(Debug)]
-struct TraitBound {
+pub struct TraitBound {
     /// Name of the type being bounded
     ///```rust
     /// impl<T: Iterator> for Test<T> {}
@@ -129,7 +130,26 @@ impl TraitBound {
 
 /// Represents trait bounds
 struct Properties {
-    bounds: Option<Vec<TraitBound>>,
+    bounds: Vec<TraitBound>,
+}
+
+impl Properties {
+    fn to_tokens(self) -> impl IntoIterator<Item = TokenTree> {
+        use std::iter;
+
+        let opening = TokenTree::Punct(Punct::new('<', proc_macro::Spacing::Alone));
+
+        let ending = TokenTree::Punct(Punct::new('>', proc_macro::Spacing::Alone));
+
+        let trait_bounds_iter = self
+            .bounds
+            .into_iter()
+            .flat_map(|bound| bound.into_tokens());
+
+        iter::once(opening)
+            .chain(trait_bounds_iter)
+            .chain(iter::once(ending))
+    }
 }
 
 /// Builder of a `ImplBlock`
@@ -138,12 +158,17 @@ pub struct ImplBlockBuilder {
     name: Option<Ident>,
     lside_props: OptVec<TraitBound>,
     is_unsafe: bool,
-    impls_trait: (), // Replace with actual trait type?!!!
+    impls_trait: Option<Ident>, // Replace with actual trait type?!!!
 }
 
 impl ImplBlockBuilder {
     pub fn name(&mut self, name: Ident) -> &mut Self {
         self.name = Some(name);
+        self
+    }
+
+    pub fn impl_trait(&mut self, trait_name: Ident) -> &mut Self {
+        self.impls_trait = Some(trait_name);
         self
     }
 
@@ -183,14 +208,24 @@ impl ImplBlockBuilder {
         let impl_ident = Ident::new("impl", Span::mixed_site());
         tkns.push(TokenTree::Ident(impl_ident));
 
-        // TODO:
         // trait bounds here :3
+        self.lside_props.do_take((), |bounds| {
+            let props = Properties { bounds };
 
-        // TODO:
-        // somehow handle syntax like
-        // impl Trait for MyStruct
-        //      ^^^^^^^^^
-        // focus on the ^
+            props.to_tokens().into_iter().for_each(|tkn| tkns.push(tkn));
+        });
+
+        // Handles impl Trait for Struct
+        //              ^^^^^^^^^
+        match self.impls_trait.take() {
+            None => {}
+            Some(mut name) => {
+                let for_ident = Ident::new("for", Span::mixed_site());
+                name.set_span(Span::mixed_site());
+
+                tkns.extend_from_slice(&[TokenTree::Ident(name), TokenTree::Ident(for_ident)]);
+            }
+        }
 
         let name = TokenTree::Ident(self.name.take().unwrap());
         tkns.push(name);
@@ -260,7 +295,7 @@ impl ImplBlock {
             name: None,
             lside_props: OptVec::new(0),
             is_unsafe: false,
-            impls_trait: (),
+            impls_trait: None,
         }
     }
 
@@ -276,7 +311,12 @@ impl ImplBlock {
             name: None,
             lside_props: OptVec::new(cap),
             is_unsafe: false,
-            impls_trait: (),
+            impls_trait: None,
         }
+    }
+
+    /// Parses the given `TokenStream` into an `ImplBlock` struct
+    pub fn parse_impl_block(_tokens: TokenStream) {
+        todo!()
     }
 }
