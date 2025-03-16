@@ -1,4 +1,5 @@
-#[allow(dead_code)]
+#![allow(dead_code)]
+
 use proc_macro::{Group, Ident, Punct, Span, TokenStream, TokenTree};
 
 use crate::lifetime::Lifetime;
@@ -212,7 +213,10 @@ impl ImplBlockBuilder {
         self.lside_props.do_take((), |bounds| {
             let props = Properties { bounds };
 
-            props.to_tokens().into_iter().for_each(|tkn| tkns.push(tkn));
+            props
+                .to_tokens()
+                .into_iter()
+                .for_each(|token| tkns.push(token));
         });
 
         // Handles impl Trait for Struct

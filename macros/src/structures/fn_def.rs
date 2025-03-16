@@ -3,37 +3,22 @@ use proc_macro::{Ident, Punct, Span};
 use crate::TokenStream;
 use crate::extra_iter::Extra;
 use crate::proc_macro::TokenTree;
-
-/*
-    Remake everything!
-*/
+use crate::ty::ParsedType;
+use std::iter;
 
 #[derive(Debug)]
 struct Arg {
-    name: String,
-    arg_type: String,
+    name: Ident,
+    arg_type: ParsedType,
 }
 
 impl Arg {
-    fn make_to_iter(&self) -> impl Iterator<Item = TokenTree> {
-        let arg_name = TokenTree::Ident(Ident::new(&self.name, Span::call_site()));
-        let delim = TokenTree::Punct(Punct::new(':', proc_macro::Spacing::Alone));
-        let arg_type = TokenTree::Ident(Ident::new(&self.arg_type, Span::call_site()));
-
-        [arg_name, delim, arg_type].into_iter()
+    pub fn new(name: Ident, arg_type: ParsedType) -> Self {
+        Self { name, arg_type }
     }
 
-    fn complete_args(args: impl Iterator<Item = Arg>) -> Extra<impl Iterator<Item = TokenTree>> {
-        fn gen_ident() -> TokenTree {
-            TokenTree::Punct(Punct::new(',', proc_macro::Spacing::Alone))
-        }
-
-        let mut tokens = Vec::new();
-
-        args.for_each(|arg| arg.make_to_iter().for_each(|item| tokens.push(item)));
-
-        let iter = Extra::new(tokens.into_iter(), 4, gen_ident);
-        iter
+    pub fn to_tokens(self) -> IntoIterator<Item = TokenTree> {
+        let base_iter = iter::once(TokenTree::Ident(self.name)).chain(self.arg_type.to_tokens());
     }
 }
 

@@ -1,17 +1,17 @@
-use proc_macro::Ident;
+use proc_macro::{Ident, TokenTree};
 
 #[derive(Debug)]
-pub(crate) struct Generic {
+pub struct Generic {
     traits: Option<Vec<Ident>>,
     name: Ident,
 }
 
 impl Generic {
-    pub(crate) fn new(traits: Option<Vec<Ident>>, name: Ident) -> Self {
+    pub fn new(traits: Option<Vec<Ident>>, name: Ident) -> Self {
         Self { traits, name }
     }
 
-    pub(crate) fn insert(&mut self, tr: Ident) {
+    pub fn insert(&mut self, tr: Ident) {
         match self.traits {
             Some(ref mut vec) => vec.push(tr),
             None => {
@@ -21,5 +21,7 @@ impl Generic {
         }
     }
 
-    pub(crate) fn as_stream() {}
+    pub fn to_tokens(self) -> impl IntoIterator<Item = TokenTree> {
+        std::iter::once(TokenTree::Ident(self.name))
+    }
 }
