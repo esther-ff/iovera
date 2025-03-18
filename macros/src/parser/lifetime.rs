@@ -30,7 +30,7 @@ impl Lifetime {
     }
 }
 
-struct LifetimeIter {
+pub struct LifetimeIter {
     iterable: [Option<TokenTree>; 2],
     slot: usize,
 }

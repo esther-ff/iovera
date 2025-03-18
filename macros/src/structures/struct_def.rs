@@ -4,24 +4,8 @@ use proc_macro::{Group, Ident, Literal, Punct, TokenTree};
 
 use crate::parser::generics::Generic;
 use crate::parser::lifetime::Lifetime;
-use crate::parser::ty::ParsedType;
+use crate::parser::ty::Ty;
 use crate::proc_macro;
-
-macro_rules! p_match {
-    ($ex: expr) => {
-        match $ex {
-            Some(val) => val,
-            None => panic!("unexpected end of TokenStream"),
-        }
-    };
-
-    ($ex: expr, $msg: expr) => {
-        match $ex {
-            Some(val) => val,
-            None => panic!("{}", $msg),
-        }
-    };
-}
 
 static EOF_AT_DEF_NAME: &'static str = "unexpected eof while parsing struct name";
 static EOF_AT_TRAIT_BOUND: &'static str = "unexpected eof while parsing trait bounds";
@@ -130,12 +114,12 @@ impl<T: std::fmt::Debug> OptVec<T> {
 
 #[derive(Debug)]
 pub(crate) struct Field {
-    field_type: ParsedType,
+    field_type: Ty,
     field_name: String,
 }
 
 impl Field {
-    pub(crate) fn new(field_type: ParsedType, field_name: String) -> Self {
+    pub(crate) fn new(field_type: Ty, field_name: String) -> Self {
         Self {
             field_type,
             field_name,

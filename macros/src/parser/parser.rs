@@ -3,7 +3,7 @@ use proc_macro::{Group, Ident, Literal, Punct, Span, TokenStream, TokenTree};
 
 use super::generics::Generic;
 use super::lifetime::Lifetime;
-use super::ty::{Borrow, ParsedType};
+use super::ty::{Borrow, Ty};
 use crate::StructDef;
 use crate::struct_def::Field;
 
@@ -453,16 +453,14 @@ impl Parser {
                                 // Just the type name
                                 let field = match parser.punct()?.as_char() {
                                     ',' => {
-                                        let field_type =
-                                            ParsedType::new(None, type_name, None, None);
+                                        let field_type = Ty::new(None, type_name, None, None);
                                         Field::new(field_type, field_name.to_string())
                                     }
 
                                     '<' => {
                                         let (gens, lfs) = dig_up_generics_lifetimes(&mut parser)?;
 
-                                        let field_type =
-                                            ParsedType::new(None, type_name, gens, lfs);
+                                        let field_type = Ty::new(None, type_name, gens, lfs);
 
                                         // After the `dig_up_generics_lifetimes` function is called
                                         // the cursor will be on the character after `>`
@@ -707,7 +705,8 @@ fn create_field(
     let borrow = match lf_name {
         None => None,
         Some(name) => {
-            let borrow = Borrow::new(is_mutable, name.to_string());
+            let lf = Lifetime::new(name.to_string(), name.span());
+            let borrow = Borrow::new(is_mutable, lf);
             Some(borrow)
         }
     };
@@ -716,9 +715,9 @@ fn create_field(
         // We'll check for additional lifetimes, marks on the type itself
         // like `Test<'a, T>`
         let (gens, lfs) = dig_up_generics_lifetimes(parser)?;
-        ParsedType::new(borrow, type_name, gens, lfs)
+        Ty::new(borrow, type_name, gens, lfs)
     } else {
-        ParsedType::new(borrow, type_name, None, None)
+        Ty::new(borrow, type_name, None, None)
     };
 
     Ok(Field::new(ty, field_name.to_string()))
