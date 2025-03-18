@@ -1,8 +1,8 @@
-use std::iter;
-
-use proc_macro::{Ident, Punct, Span, TokenTree};
+use proc_macro::{Ident, Punct, Spacing, Span, TokenTree};
 
 use super::{generics::Generic, lifetime::Lifetime};
+use crate::iters::interweave::Separator;
+use std::iter;
 
 #[derive(Debug)]
 pub(crate) struct Ty {
@@ -31,58 +31,71 @@ impl Ty {
         }
     }
 
-    pub(crate) fn to_tokens(self) -> impl IntoIterator<Item = TokenTree> {
-        let base = iter::once(TokenTree::Ident(self.base));
+    pub(crate) fn to_tokens(mut self) -> impl IntoIterator<Item = TokenTree> {
+        let mut scratch = Vec::with_capacity(256);
+        scratch.push(TokenTree::Ident(self.base.clone()));
 
         match self.borrow.take() {
-            None => {
-                todo!()
+            None => {}
+            Some(borrow) => scratch.extend(borrow.to_tokens()),
+        }
+
+        match self.generics_to_tokens() {
+            None => {}
+            Some(spec) => {
+                scratch.push(TokenTree::Punct(Punct::new('<', Spacing::Alone)));
+                scratch.extend(spec);
+                scratch.push(TokenTree::Punct(Punct::new('>', Spacing::Alone)));
             }
-            Some(borrow) => {
-                let iter =
-                    borrow
-                        .to_tokens()
-                        .into_iter()
-                        .chain(base)
-                        .chain(iter::once(TokenTree::Punct(Punct::new(
-                            '<',
-                            proc_macro::Spacing::Alone,
-                        ))));
+        }
 
-                match (self.generic.take(), self.lifetime.take()) {
-                    (Some(generic), Some(lifetime)) => {
-                        // interweave some `,`
-                        let generic_iter =
-                            generic.into_iter().flat_map(|generic| generic.to_tokens());
+        scratch.into_iter()
+    }
 
-                        let lifetime_iter = lifetime
-                            .into_iter()
-                            .flat_map(|lifetime| lifetime.into_borrow().to_tokens());
+    fn generics_to_tokens(&mut self) -> Option<Vec<TokenTree>> {
+        let sep = Punct::new(',', Spacing::Alone);
 
-                        return iter;
-                    }
-                    (Some(generic), None) => {
-                        // interweave some `,`
-                        let generic_iter =
-                            generic.into_iter().flat_map(|generic| generic.to_tokens());
+        match (self.generic.take(), self.lifetime.take()) {
+            (Some(generics), Some(lifetimes)) => {
+                let mut scratch: Vec<TokenTree> = Vec::with_capacity(256);
 
-                        return iter;
-                    }
-                    (None, Some(lifetime)) => {
-                        let lifetime_iter = lifetime
-                            .into_iter()
-                            .flat_map(|lifetime| lifetime.into_borrow().to_tokens());
+                let sep = Punct::new(',', Spacing::Alone);
 
-                        return iter;
-                    }
-                    (None, None) => {
-                        return iter.map(|token| {
-                            token.set_span(Span::mixed_site());
-                            token
-                        });
-                    }
+                for generic in generics {
+                    scratch.push(generic.as_token());
+                    scratch.push(TokenTree::Punct(sep.clone()))
                 }
+
+                for lifetime in lifetimes {
+                    scratch.extend(lifetime.into_tokens());
+                    scratch.push(TokenTree::Punct(sep.clone()));
+                }
+
+                scratch.pop();
+
+                Some(scratch)
             }
+            (Some(g), None) => {
+                let iter = g.into_iter().map(|x| x.as_token());
+
+                let sep_iter = Separator::new(iter, TokenTree::Punct(sep.clone())).collect();
+
+                Some(sep_iter)
+            }
+            (None, Some(lifetimes)) => {
+                let mut scratch: Vec<TokenTree> = Vec::with_capacity(256);
+
+                for lifetime in lifetimes {
+                    scratch.extend(lifetime.into_tokens());
+                    scratch.push(TokenTree::Punct(sep.clone()));
+                }
+
+                scratch.pop();
+
+                Some(scratch)
+            }
+
+            _ => None,
         }
     }
 }
@@ -98,7 +111,7 @@ impl Borrow {
         Self { mutable, lifetime }
     }
 
-    pub fn to_tokens(self) -> impl IntoIterator<Item = TokenTree> {
+    pub fn to_tokens(self) -> impl Iterator<Item = TokenTree> {
         BorrowIter {
             mutable: self.mutable,
             iter: self.lifetime.into_tokens(),

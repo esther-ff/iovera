@@ -43,7 +43,10 @@ impl Iterator for LifetimeIter {
             return None;
         }
 
-        unsafe { self.iterable.get_unchecked_mut(self.slot).take() }
+        let val = unsafe { self.iterable.get_unchecked_mut(self.slot).take() };
+        self.slot += 1;
+
+        val
     }
 }
 

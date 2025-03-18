@@ -24,4 +24,8 @@ impl Generic {
     pub fn to_tokens(self) -> impl IntoIterator<Item = TokenTree> {
         std::iter::once(TokenTree::Ident(self.name))
     }
+
+    pub fn as_token(self) -> TokenTree {
+        TokenTree::Ident(self.name)
+    }
 }

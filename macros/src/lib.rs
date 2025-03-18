@@ -5,7 +5,7 @@ mod iters;
 mod parser;
 mod structures;
 
-use iters::*;
+use iters::interweave;
 use parser::{parser::Parser, *};
 use structures::struct_def;
 
